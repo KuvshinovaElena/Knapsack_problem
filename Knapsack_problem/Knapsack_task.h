@@ -113,3 +113,4 @@ void Knapsack_task::decrypt(const char* input, const vector<long> privKey, const
 	block = decryptBlock(bl,privKey,31,105);
 	return;
 }
+
