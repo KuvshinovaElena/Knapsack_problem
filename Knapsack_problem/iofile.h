@@ -1,25 +1,36 @@
 #pragma once
 #include<vector>
+#include<bitset>
 #include<fstream>
 #include<iostream>
 
 using std::vector;
+using std::bitset;
 using std::ifstream;
 using std::ofstream;
 
 namespace FileIO
 {
-	vector<bool> readBlockBit(ifstream in, int sizeBlock);
-	long readBlockLong(ifstream in);
-	int writeBlockBit(ifstream out, vector<bool> block);
-	int writeBlockLong(ifstream out, long n);
+	vector<bool> readBlockBit(ifstream& in, int sizeBlock, int& pos);
+	long readBlockLong(ifstream& in);
+	void writeBlockBit(ofstream& out, vector<bool> block);
+	void writeBlockLong(ofstream& out, long n);
+	int filedist(ifstream& f, int pos);
 }
 
-vector<bool> FileIO::readBlockBit(ifstream in, int sizeBlock)
+int FileIO::filedist(ifstream& f, int pos)
 {
-	vector<bool> block(sizeBlock);
-	int count = 0;
-	int pos;
+	int cur = static_cast<int>(f.tellg());
+	f.seekg(0, std::ios::end);
+	int fsize = static_cast<int>(f.tellg());
+	f.seekg(std::streamoff(pos), std::ios::beg);
+	return fsize - cur;
+}
+
+vector<bool> FileIO::readBlockBit(ifstream& in, int sizeBlock, int& pos)
+{
+	//sizeBlock == число байт
+	bitset<8> block;
 	try {
 		pos = static_cast<int>(in.tellg());
 	}
@@ -28,23 +39,49 @@ vector<bool> FileIO::readBlockBit(ifstream in, int sizeBlock)
 		in.open("input.txt", std::ios::binary);
 		pos = static_cast<int>(in.tellg());
 	}
-	while (pos != EOF)
+	int dist = filedist(in, pos);
+	if (dist >= sizeBlock && pos>=0)
 	{
 		in.read(reinterpret_cast<char*>(&block), sizeBlock);
-		count++;
-		pos = static_cast<int>(in.tellg());
-		if (pos < 0)
-		{
-			in.clear();
-			pos = static_cast<int>(in.tellg());
-			pos = pos * sizeBlock - (count - 1) * 64 - 1;
-			if (pos < 0) break;
-			for (int i = pos; i < 64 && i>0; i++)
-			{
-				block[i] = 0;
-			}
-			pos = EOF;
-		}
 	}
-	return block;
+	else
+	{
+		in.read(reinterpret_cast<char*>(&block), dist);
+		for (int i = pos * 8; i<8 * sizeBlock; i++)
+		{
+			block[pos * 8] = 0;
+		}
+		pos = EOF;
+	}
+	vector<bool> bblock(8*sizeBlock);
+	for (size_t i = 0; i < bblock.size(); i++)
+	{
+		bblock[i] = block[i];
+	}
+	return bblock;
+}
+
+long FileIO::readBlockLong(ifstream& in)
+{
+	if (!in.is_open()) in.open("output.txt", std::ios::binary);
+	long code;
+	in >> code;
+	return code;
+}
+
+void FileIO::writeBlockBit(ofstream& out, vector<bool> block)
+{
+	if (!out.is_open()) out.open("decrypt.txt", std::ios::binary);
+	bitset<8> bitblock;
+	for (size_t i = 0; i < block.size(); i++)
+	{
+		bitblock[i] = block[i];
+	}
+	out.write(reinterpret_cast<char*>(&bitblock), 1);
+}
+
+void FileIO::writeBlockLong(ofstream& out, long n)
+{
+	if (!out.is_open()) out.open("output.txt", std::ios::binary);
+	out << n<<" ";
 }

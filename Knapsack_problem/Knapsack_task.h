@@ -1,22 +1,22 @@
 #pragma once
 #include <vector>
-#include <bitset>
+#include "iofile.h"
+
 using std::vector;
-using std::bitset;
 
 namespace Prep
 {
 	long multipl(long, long, long);
-	long inverse(const long, const long);
+	long inverse(const long, const long, long * d);
 }
 
 namespace Knapsack_task
 {
 	vector<long> createPublicKey(vector<long>, long, long);
-	void encrypt(const char *,const vector<long> privkey, const char* );
-	void decrypt(const char*, const vector<long> privKey, const char *);
+	bool encrypt(const char *,const vector<long> privkey, const char*, long, long);
+	bool decrypt(const char*, const vector<long> privKey, const char *, long, long);
 	long encryptBlock(const vector<bool> block, const vector<long> privKey);
-	vector<bool> decryptBlock(const long block, const vector<long> privKey, long n, long m);
+	vector<bool> decryptBlock(const long block, const vector<long> privKey, long invN, long m);
 }
 
 long Prep::multipl(long a, long b, long mod)
@@ -26,11 +26,11 @@ long Prep::multipl(long a, long b, long mod)
 	return res;
 }
 
-long Prep::inverse(const long a, const long n)
+long Prep::inverse(const long a, const long n, long * d)
 {
 	long r1 = a, r2 = n;
 	long x;
-	long q, r, x1, x2, y1, y2;
+	long q, r, x1, x2;
 	if (n == 0)	return 1;
 	x2 = 1, x1 = 0;
 	while (r2 > 0) {
@@ -43,16 +43,15 @@ long Prep::inverse(const long a, const long n)
 		x1 = x;
 	}
 	x = x2;
-	return n+x;
+	*d = r1;
+	return x+n;
 }
-
-
 
 vector<long> Knapsack_task::createPublicKey(vector<long> privkey, long n, long m)
 {
 	vector<long> pubkey(privkey.size());
 
-	for (int i = 0; i<privkey.size(); i++)
+	for (size_t i = 0; i<privkey.size(); i++)
 	{
 		pubkey[i] = Prep::multipl(privkey[i], n, m);
 	}
@@ -62,16 +61,15 @@ vector<long> Knapsack_task::createPublicKey(vector<long> privkey, long n, long m
 long Knapsack_task::encryptBlock(const vector<bool> block, const vector<long> pubKey)
 {
 	long result = 0;
-	for (int i = 0; i < block.size(); i++)
+	for (size_t i = 0; i < block.size(); i++)
 	{
 		result += block[i] * pubKey[i];
 	}
 	return result;
 }
 
-vector<bool> Knapsack_task::decryptBlock(const long block, const vector<long> privKey, long n, long mod)
+vector<bool> Knapsack_task::decryptBlock(const long block, const vector<long> privKey, long invN, long mod)
 {
-	long invN = Prep::inverse(n, mod);
 	long res = Prep::multipl(block, invN,mod);
 	vector<long> knapsack;	//Рюкзак
 	for (int i = privKey.size()-1; i >= 0; i--)
@@ -82,11 +80,10 @@ vector<bool> Knapsack_task::decryptBlock(const long block, const vector<long> pr
 			res -= privKey[i];
 		}
 	}
-	
 	vector<bool> knapset(privKey.size());
 	if (!knapsack.empty())
 	{
-		for (int i = 0; i < knapset.size(); i++)
+		for (size_t i = 0; i < knapset.size(); i++)
 		{
 			if (std::find(knapsack.begin(), knapsack.end(), privKey[i]) != knapsack.end())
 			{
@@ -98,19 +95,55 @@ vector<bool> Knapsack_task::decryptBlock(const long block, const vector<long> pr
 	return knapset;
 }
 
-void Knapsack_task::encrypt(const char * input, const vector<long> privkey, const char* outfile)
+bool Knapsack_task::encrypt(const char * input, const vector<long> privkey, const char* outfile, long n, long mod)
 {
-	vector<long> pubkey = createPublicKey(privkey, 31, 105);
-	vector<bool> block({ 0,1,1,0,0,0 });
-	long code = encryptBlock(block,pubkey);
-	return;
+	long test = 0;
+	for (size_t i = 0; i < privkey.size(); i++)
+	{
+		if (test > privkey[i]) return 0;	//Секретный ключ должен быть сверхвозрастающей последовательностью
+		test += privkey[i];
+	}
+	if (test > mod) return 0;	//Значение модуля должно быть больше суммы всех чисел последовательности
+	Prep::inverse(n, mod, &test);
+	if (test != 1) return 0;	//Модуль и множитель должны быть ваимно простыми числами
+	vector<long> pubkey = createPublicKey(privkey, n, mod);
+	ifstream in(input, std::ios::binary);
+	ofstream out(outfile);
+	if (!in.is_open() || !out.is_open()) return 0;
+	int pos = static_cast<int>(in.tellg());
+	while (pos != EOF)
+	{
+		vector<bool> block = FileIO::readBlockBit(in,pubkey.size()/8,pos);
+		long code = encryptBlock(block,pubkey);
+		FileIO::writeBlockLong(out, code);
+	}
+	in.close();
+	out.close();
+	return 1;
 }
 
-void Knapsack_task::decrypt(const char* input, const vector<long> privKey, const char* output)
+bool Knapsack_task::decrypt(const char* input, const vector<long> privKey, const char* output, long n, long mod)
 {
-	long bl = 174;
-	vector<bool> block;
-	block = decryptBlock(bl,privKey,31,105);
-	return;
+	long test = 0;
+	for (size_t i = 0; i < privKey.size(); i++)
+	{
+		if (test > privKey[i]) return 0;	//Секретный ключ должен быть сверхвозрастающей последовательностью
+		test += privKey[i];
+	}
+	if (test > mod) return 0;	//Значение модуля должно быть больше суммы всех чисел последовательности
+	long invN = Prep::inverse(n, mod, &test);
+	if (test != 1) return 0;	//Модуль и множитель должны быть ваимно простыми числами
+	ifstream in(input);
+	ofstream out(output, std::ios::binary | std::ios::out);
+	if (!in.is_open() || !out.is_open()) return 0;
+	while (int(in.tellg()) != EOF)
+	{
+		long code = FileIO::readBlockLong(in);
+		vector<bool> block = decryptBlock(code, privKey, invN, mod);
+		FileIO::writeBlockBit(out,block);
+	}
+	in.close();
+	out.close();
+	return 1;
 }
 
